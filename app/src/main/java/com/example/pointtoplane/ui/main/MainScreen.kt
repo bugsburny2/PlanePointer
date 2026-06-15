@@ -608,112 +608,110 @@ private fun RadarScreen(
     val textMeasurer = rememberTextMeasurer()
     val visibleAircraft = radarAircraft.filter { it.distanceKm <= rangeKm }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .clickable { onToggleRange() }
-            .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.size(130.dp)
-        ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val center = Offset(size.width / 2, size.height / 2)
-                val maxRadius = size.minDimension / 2 - 4.dp.toPx()
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val center = Offset(size.width / 2, size.height / 2)
+            val maxRadius = size.minDimension / 2 - 12.dp.toPx() // Safe margin to prevent clipping ticks
 
-                // 1. Radar background grid rings
-                drawCircle(color = Color(0xFF00D4FF).copy(alpha = 0.12f), radius = maxRadius, style = Stroke(1.5.dp.toPx()))
-                drawCircle(color = Color(0xFF00D4FF).copy(alpha = 0.08f), radius = maxRadius * 2 / 3, style = Stroke(1.dp.toPx()))
-                drawCircle(color = Color(0xFF00D4FF).copy(alpha = 0.05f), radius = maxRadius / 3, style = Stroke(1.dp.toPx()))
+            // 1. Radar background grid rings
+            drawCircle(color = Color(0xFF00D4FF).copy(alpha = 0.12f), radius = maxRadius, style = Stroke(1.5.dp.toPx()))
+            drawCircle(color = Color(0xFF00D4FF).copy(alpha = 0.08f), radius = maxRadius * 2 / 3, style = Stroke(1.dp.toPx()))
+            drawCircle(color = Color(0xFF00D4FF).copy(alpha = 0.05f), radius = maxRadius / 3, style = Stroke(1.dp.toPx()))
 
-                // 2. Heading ticks rotating with compass azimuth (Track-Up mode)
-                val azimuth = orientation.azimuthDeg
-                listOf(0f to "N", 90f to "E", 180f to "S", 270f to "W").forEach { (angle, label) ->
-                    val angleRad = Math.toRadians((angle - azimuth).toDouble())
-                    val startX = center.x + maxRadius * sin(angleRad).toFloat()
-                    val startY = center.y - maxRadius * cos(angleRad).toFloat()
-                    val endX = center.x + (maxRadius - 5.dp.toPx()) * sin(angleRad).toFloat()
-                    val endY = center.y - (maxRadius - 5.dp.toPx()) * cos(angleRad).toFloat()
+            // 2. Heading ticks rotating with compass azimuth (Track-Up mode)
+            val azimuth = orientation.azimuthDeg
+            listOf(0f to "N", 90f to "E", 180f to "S", 270f to "W").forEach { (angle, label) ->
+                val angleRad = Math.toRadians((angle - azimuth).toDouble())
+                val startX = center.x + maxRadius * sin(angleRad).toFloat()
+                val startY = center.y - maxRadius * cos(angleRad).toFloat()
+                val endX = center.x + (maxRadius - 6.dp.toPx()) * sin(angleRad).toFloat()
+                val endY = center.y - (maxRadius - 6.dp.toPx()) * cos(angleRad).toFloat()
 
-                    drawLine(
-                        color = if (label == "N") Color(0xFFFF4444) else ColorAccentBlue.copy(alpha = 0.5f),
-                        start = Offset(startX, startY),
-                        end = Offset(endX, endY),
-                        strokeWidth = 1.5.dp.toPx()
-                    )
-                }
+                drawLine(
+                    color = if (label == "N") Color(0xFFFF4444) else ColorAccentBlue.copy(alpha = 0.5f),
+                    start = Offset(startX, startY),
+                    end = Offset(endX, endY),
+                    strokeWidth = 1.5.dp.toPx()
+                )
+            }
 
-                // 3. Rotating radar sweep line with trailing gradient
-                rotate(rotationAnim, pivot = center) {
-                    drawArc(
-                        brush = Brush.sweepGradient(
-                            0f to Color.Transparent, 0.25f to Color(0xFF00D4FF).copy(alpha = 0.35f), 1f to Color.Transparent,
-                            center = center
+            // 3. Rotating radar sweep line with trailing gradient
+            rotate(rotationAnim, pivot = center) {
+                drawArc(
+                    brush = Brush.sweepGradient(
+                        0f to Color.Transparent, 0.25f to Color(0xFF00D4FF).copy(alpha = 0.35f), 1f to Color.Transparent,
+                        center = center
+                    ),
+                    startAngle = -90f, sweepAngle = 90f, useCenter = true
+                )
+            }
+
+            // 4. Center dot (user)
+            drawCircle(ColorAccentBlue, radius = 3.dp.toPx(), center = center)
+            drawCircle(ColorAccentBlue.copy(alpha = 0.2f), radius = 6.dp.toPx(), center = center, style = Stroke(1.dp.toPx()))
+
+            // 5. Plot aircraft dots within rangeKm
+            visibleAircraft.forEach { plane ->
+                val normalizedDist = (plane.distanceKm / rangeKm).coerceAtMost(1f)
+                val r = normalizedDist * maxRadius
+                val relativeBearingRad = Math.toRadians((plane.bearingDeg - azimuth).toDouble())
+                val px = center.x + r * sin(relativeBearingRad).toFloat()
+                val py = center.y - r * cos(relativeBearingRad).toFloat()
+
+                // Glowing amber plane dot
+                drawCircle(ColorAccentAmber, radius = 3.5.dp.toPx(), center = Offset(px, py))
+                drawCircle(ColorAccentAmber.copy(alpha = 0.25f), radius = 7.dp.toPx(), center = Offset(px, py), style = Stroke(1.dp.toPx()))
+
+                // Heading indicator line
+                val headingRad = Math.toRadians((plane.trackDeg - azimuth).toDouble())
+                drawLine(
+                    color = ColorAccentAmber.copy(alpha = 0.6f),
+                    start = Offset(px, py),
+                    end = Offset(
+                        px + 8.dp.toPx() * sin(headingRad).toFloat(),
+                        py - 8.dp.toPx() * cos(headingRad).toFloat()
+                    ),
+                    strokeWidth = 1.5.dp.toPx()
+                )
+
+                // Draw flight callsign/number next to the dot
+                if (plane.callsign.isNotBlank()) {
+                    drawText(
+                        textMeasurer = textMeasurer,
+                        text = plane.callsign.trim(),
+                        style = TextStyle(
+                            color = ColorAccentAmber,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold
                         ),
-                        startAngle = -90f, sweepAngle = 90f, useCenter = true
+                        topLeft = Offset(px + 6.dp.toPx(), py - 6.dp.toPx())
                     )
-                }
-
-                // 4. Center dot (user)
-                drawCircle(ColorAccentBlue, radius = 3.dp.toPx(), center = center)
-                drawCircle(ColorAccentBlue.copy(alpha = 0.2f), radius = 6.dp.toPx(), center = center, style = Stroke(1.dp.toPx()))
-
-                // 5. Plot aircraft dots within rangeKm
-                visibleAircraft.forEach { plane ->
-                    val normalizedDist = (plane.distanceKm / rangeKm).coerceAtMost(1f)
-                    val r = normalizedDist * maxRadius
-                    val relativeBearingRad = Math.toRadians((plane.bearingDeg - azimuth).toDouble())
-                    val px = center.x + r * sin(relativeBearingRad).toFloat()
-                    val py = center.y - r * cos(relativeBearingRad).toFloat()
-
-                    // Glowing amber plane dot
-                    drawCircle(ColorAccentAmber, radius = 3.dp.toPx(), center = Offset(px, py))
-                    drawCircle(ColorAccentAmber.copy(alpha = 0.2f), radius = 6.dp.toPx(), center = Offset(px, py), style = Stroke(1.dp.toPx()))
-
-                    // Heading indicator line
-                    val headingRad = Math.toRadians((plane.trackDeg - azimuth).toDouble())
-                    drawLine(
-                        color = ColorAccentAmber.copy(alpha = 0.5f),
-                        start = Offset(px, py),
-                        end = Offset(
-                            px + 7.dp.toPx() * sin(headingRad).toFloat(),
-                            py - 7.dp.toPx() * cos(headingRad).toFloat()
-                        ),
-                        strokeWidth = 1.dp.toPx()
-                    )
-
-                    // Draw flight callsign/number next to the dot
-                    if (plane.callsign.isNotBlank()) {
-                        drawText(
-                            textMeasurer = textMeasurer,
-                            text = plane.callsign.trim(),
-                            style = TextStyle(
-                                color = ColorAccentAmber,
-                                fontSize = 7.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            topLeft = Offset(px + 5.dp.toPx(), py - 5.dp.toPx())
-                        )
-                    }
                 }
             }
         }
 
-        Spacer(Modifier.height(4.dp))
-
-        Text(
-            text = "Radar (${rangeKm.toInt()}km)",
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            color = ColorAccentBlue
-        )
-        Text(
-            text = if (visibleAircraft.isEmpty()) "Searching for flights..." else "${visibleAircraft.size} flights nearby",
-            fontSize = 9.sp,
-            color = ColorTextSecondary
-        )
+        // Top info overlay
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 26.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Radar (${rangeKm.toInt()}km)",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = ColorAccentBlue
+            )
+            Text(
+                text = if (visibleAircraft.isEmpty()) "Searching..." else "${visibleAircraft.size} flights",
+                fontSize = 9.sp,
+                color = ColorTextSecondary
+            )
+        }
     }
 }
